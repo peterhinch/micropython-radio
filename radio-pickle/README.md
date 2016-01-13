@@ -92,14 +92,13 @@ risk of misconfiguration. A RadioSetup object may be instantiated and configured
 to master and slave.
 
 Class variables
-~~~~~~~~~~~~~~~
 
-These must be identical for master and slave.  
+These must be identical for master and slave.
+
 ``payload_size`` The driver requires a value of 32.  
-``channel`` Defines the radios' carrier frequency. See notes below.  
+``channel`` Defines the radios' carrier frequency. See notes below.
 
 Constructor
-~~~~~~~~~~~
 
 This takes the following keyword only arguments:  
 ``spi_no`` SPI bus no.  
@@ -113,15 +112,12 @@ Class Master
 This is subclassed from TwoWayRadio which is subclassed from NRF24L01 in nrf24l01.py.
 
 Methods
-~~~~~~~
 
 Constructor
-~~~~~~~~~~~
 
 This takes a single argument, a RadioSetup instance.
 
-exchange
-~~~~~~~~
+exchange()
 
 This takes a single argument, an arbitrary Python object, defaulting to ``None``. If the exchange
 compeletes successfully it returns the object provided by the slave. A protocol failure caused by
@@ -134,12 +130,10 @@ Class Slave
 This is subclassed from TwoWayRadio which is subclassed from NRF24L01 in nrf24l01.py.
 
 Constructor
-~~~~~~~~~~~
 
 This takes a single argument, a RadioSetup instance.
 
-exchange
-~~~~~~~~
+exchange()
 
 From the point of view of the slave an exchange can only begin when the master initiates
 an exchange.
