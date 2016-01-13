@@ -170,7 +170,7 @@ As the devices are moved further apart the time to exchange small objects gradua
 50mS as the chip and the driver struggle to communicate. The driver also requests retransmission
 if a response to an individual transmission is not received within a fixed period.
 
-If a timeout occurs an ``OSError` will be raised in about 120mS although this can be longer if repeated
+If a timeout occurs an ``OSError`` will be raised in about 120mS although this can be longer if repeated
 retries occur before the failure. The absolute maximum depends on conditions and message length but it
 can be calculated and is finite :)
 
