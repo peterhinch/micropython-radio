@@ -1,6 +1,6 @@
 import radio_pickle as rp
 import pyb
-from myconfig import config_testbox, config_v1  # Configs for my hardware
+from myconfig import config_master, config_slave  # Configs for my hardware
 
 
 # These tests run a range of packet sizes. Because they iterate over different lengths, if
@@ -8,7 +8,7 @@ from myconfig import config_testbox, config_v1  # Configs for my hardware
 # sends back the length of the string received. If this doesn't match what was sent, the
 # test quits.
 def test_slave():
-    s = rp.Slave(config_v1)
+    s = rp.Slave(config_slave)
     obj = [0, ''] # This is the object to be sent
     x = ord('a')
     while True:
@@ -28,7 +28,7 @@ def test_slave():
             obj[0] = len(obj[1])
 
 def test_master():
-    m = rp.Master(config_testbox)
+    m = rp.Master(config_master)
     obj = [0, ''] # object to be sent
     x = ord('a')
     while True:
@@ -48,7 +48,7 @@ def test_master():
 
 # Simple confidence checks
 def tm():                                       # Test master. Runs on testbox
-    m = rp.Master(config_testbox)
+    m = rp.Master(config_master)
     obj = [0, '']
     x = ord('a')
     while True:
@@ -62,7 +62,7 @@ def tm():                                       # Test master. Runs on testbox
         obj[0] += 1
 
 def ts():                                       # Test slave: runs on V1 board
-    s = rp.Slave(config_v1)
+    s = rp.Slave(config_slave)
     obj = [0, '']
     x = ord('a')
     while True:

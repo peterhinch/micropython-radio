@@ -5,12 +5,12 @@ import pyb
 import radio_pickle as rp
 from usched import Sched, wait, Roundrobin
 from lcdthread import LCD, PINLIST                          # Library supporting Hitachi LCD module
-from myconfig import config_testbox, config_v1              # Configs for my hardware
+from myconfig import config_master, config_slave              # Configs for my hardware
 # usched and lcdthread at https://github.com/peterhinch/Micropython-scheduler.git
 
 def master(lcd):
     yield Roundrobin()
-    m = rp.Master(config_testbox)
+    m = rp.Master(config_master)
     obj = [0, '']
     x = ord('a')
     while True:
@@ -38,7 +38,7 @@ def test():
 # test_master() and test_slave() run at REPL (master on testbox) to check a variety of
 # message lengths including different lengths in each direction
 def test_master():
-    m = rp.Master(config_testbox)
+    m = rp.Master(config_master)
     obj = [0, ''] # object to be sent
     x = ord('a')
     while True:
@@ -62,7 +62,7 @@ def test_slave():
     power_controller = PowerController(pin_active_high = 'Y12', pin_active_low = 'Y11')
     power_controller.power_up()
 
-    s = rp.Slave(config_v1)
+    s = rp.Slave(config_slave)
     obj = [0, ''] # This is the object to be sent
     x = ord('a')
     while True:
@@ -83,7 +83,7 @@ def test_slave():
 
 # Simple confidence checks
 def tm():                                       # Test master. Runs on testbox
-    m = rp.Master(config_testbox)
+    m = rp.Master(config_master)
     obj = [0, '']
     x = ord('a')
     while True:
@@ -100,7 +100,7 @@ def ts():                                       # Test slave: runs on V1 board
     from micropower import PowerController
     power_controller = PowerController(pin_active_high = 'Y12', pin_active_low = 'Y11')
     power_controller.power_up()
-    s = rp.Slave(config_v1)
+    s = rp.Slave(config_slave)
     obj = [0, '']
     x = ord('a')
     while True:
