@@ -35,7 +35,7 @@ includes a CRC code. The receiver checks this, if it matches the data it's recei
 acknowledgement, otherwise it sends back an error code. In the latter case the transmission and checking
 process is repeated. This continues until either the data is received successfully or a defined number of
 attempts is reached. All this happens entirely without programmer intervention. However it does mean that
-sending a message takes a variable length of time depending on factors such as distance and intereference.
+sending a message takes a variable length of time depending on factors such as distance and interference.
 
 Dependencies
 ------------
