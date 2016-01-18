@@ -92,17 +92,14 @@ Class Master
 
 The class hierarchy is Master-RadioFast-NRF24L01 (in nrf24l01.py).  
 
-Constructor
-
+Constructor  
 This takes one mandatory argument, a ``RadioConfig`` object. This (defined in ``msg.py`` and
 instantiated in ``config.py``) details the connections to the nRF24l01 module and channel in use.
 
-method exchange()
-
+method exchange()  
 Argument: ``msg_send`` a message for transmission. Attempts to send it to the slave and returns a response.
 
-Results.
-
+Results:  
 On success, returns a ``ToMaster`` message instance with contents unpacked from the byte stream.
 On timeout returns None.
 
@@ -111,21 +108,18 @@ Class Slave
 
 The class hierarchy is Slave-RadioFast-NRF24L01 (in nrf24l01.py).
 
-Constructor
-
+Constructor:  
 This takes one mandatory argument, a ``RadioConfig`` object. This (defined in ``msg.py`` and
 instantiated in ``config.py``) details the connections to the nRF24l01 module and channel in use.
 
-method exchange()
-
-Arguments:
+method exchange()  
+Arguments:  
 1. The message for transmission.  
 2. ``block`` Boolean, default True. Determines whether ``exchange()`` waits for a transmission
 from the master (blocking transfer) or returns immediately with a status. If a message is received
 from the master it is unpacked.
 
-Results.
-
+Results:  
 On success, returns an unpacked ``FromMaster`` message object.  
 On timeout returns None.  
 If no data has been sent (nonblocking read only) returns False.
