@@ -88,8 +88,7 @@ Module radio_fast.py
 --------------------
 
 Class Master
-~~~~~~~~~~~~
-
+------------
 
 The class hierarchy is Master-RadioFast-NRF24L01 (in nrf24l01.py).  
 
@@ -108,7 +107,7 @@ On success, returns a ``ToMaster`` message instance with contents unpacked from 
 On timeout returns None.
 
 Class Slave
-~~~~~~~~~~~
+-----------
 
 The class hierarchy is Slave-RadioFast-NRF24L01 (in nrf24l01.py).
 
@@ -132,7 +131,7 @@ On timeout returns None.
 If no data has been sent (nonblocking read only) returns False.
 
 Class RadioFast
-~~~~~~~~~~~~~~~
+---------------
 
 This is subclassed from NRF24L01 in nrf24l01.py. It contains one user configurable class variable ``timeout``
 which determines the maximum time ``Master`` or ``Slave`` instances will wait to send or receive a message.
@@ -140,7 +139,7 @@ In practice with short messages the radio times out in less than the default of 
 to set an approximate maximum.
 
 Class RadioConfig
-~~~~~~~~~~~~~~~~~
+-----------------
 
 This should be fairly self-explanatory: it provides a means of defining physical connections to the
 nRF24l01 and the channel number (the latter is a class variable as its value must be identical for both
@@ -159,8 +158,7 @@ assertion failure will occur otherwise when a radio is instantiated.
 It also implements ``RadioConfig`` instances corresponding to the hardware in use.
 
 Classes FromMaster and ToMaster
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
+-------------------------------
 
 These define the message contents for messages sent from master to slave and vice versa. To adapt these
 for an application the instance variables, ``fmt`` format string, ``pack()`` and ``unpack()`` methods
