@@ -97,7 +97,8 @@ This takes one mandatory argument, a ``RadioConfig`` object. This (defined in ``
 instantiated in ``config.py``) details the connections to the nRF24l01 module and channel in use.
 
 method exchange()  
-Argument: ``msg_send`` a message for transmission. Attempts to send it to the slave and returns a response.
+Argument: A ``FromMaster`` message object for transmission. The method Attempts to send it to the
+slave and returns a response.
 
 Results:  
 On success, returns a ``ToMaster`` message instance with contents unpacked from the byte stream.
@@ -114,7 +115,7 @@ instantiated in ``config.py``) details the connections to the nRF24l01 module an
 
 method exchange()  
 Arguments:  
-1. The message for transmission.  
+1. A ``ToMaster`` message object for transmission.  
 2. ``block`` Boolean, default True. Determines whether ``exchange()`` waits for a transmission
 from the master (blocking transfer) or returns immediately with a status. If a message is received
 from the master it is unpacked.
