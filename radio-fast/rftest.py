@@ -5,40 +5,42 @@ import pyb
 import radio_fast as rf
 from usched import Sched, wait, Roundrobin
 from lcdthread import LCD, PINLIST              # Library supporting Hitachi LCD module
-from config import testbox_config, v1_config  # Configs for my hardware
+from config import FromMaster, ToMaster, testbox_config, v1_config  # Configs for my hardware
 
-messages = rf.MessagePair()                     # Instantiate messages and check compatibility
 
 def tm():
-    m = rf.Master(testbox_config, messages)
+    m = rf.Master(testbox_config)
+    send_msg = FromMaster()
     while True:
-        result = m.exchange()
+        result = m.exchange(send_msg)
         if result is not None:
             print(result.i0)
         else:
             print('Timeout')
-        messages.from_master.i0 += 1
+        send_msg.i0 += 1
         pyb.delay(1000)
 
 def ts():
     from micropower import PowerController
     power_controller = PowerController(pin_active_high = 'Y12', pin_active_low = 'Y11')
     power_controller.power_up()
-    s = rf.Slave(v1_config, messages)
+    s = rf.Slave(v1_config)
+    send_msg = ToMaster()
     while True:
-        result = s.exchange(block = True)       # Wait for master
+        result = s.exchange(send_msg)       # Wait for master
         if result is not None:
             print(result.i0)
         else:
             print('Timeout')
-        messages.to_master.i0 += 1
+        send_msg.i0 += 1
 
 def master(lcd):
     yield Roundrobin()
-    m = rf.Master(testbox_config, messages)
+    m = rf.Master(testbox_config)
+    send_msg = FromMaster()
     while True:
         start = pyb.millis()
-        result = m.exchange()
+        result = m.exchange(send_msg)
         t = pyb.elapsed_millis(start)
         lcd[1] = 't = {}mS'.format(t)
         if result is not None:
@@ -46,7 +48,7 @@ def master(lcd):
         else:
             lcd[0] = 'Timeout'
         yield from wait(1.0)
-        messages.from_master.i0 += 1
+        send_msg.i0 += 1
 
 # Run this on testbox, run ts() on slave
 def test():

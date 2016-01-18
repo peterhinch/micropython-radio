@@ -54,38 +54,33 @@ The following samples show typical usage. To run these you need to edit ``config
 defines hardware connections and message formats.
 
 ```python
-import pyb
-import radio_fast as rf
-from config import master_config, slave_config  # Configs for the hardware
-
-messages = rf.MessagePair()                     # Instantiate messages and check compatibility
+import pyb, radio_fast
+from config import master_config, slave_config, FromMaster, ToMaster
 def test_slave():
-    s = rf.Slave(slave_config, messages)
+    s = radio_fast.Slave(slave_config)
+    send_msg = ToMaster()
     while True:
-        result = s.exchange(block = True)       # Wait for master
-        if result is not None:
-            print(result.i0)
+        rx_msg = s.exchange(send_msg, block = True)       # Wait for master
+        if rx_msg is not None:
+            print(rx_msg.i0)
         else:
             print('Timeout')
-        messages.to_master.i0 += 1
-
+        send_msg.i0 += 1
 ```
 
 ```python
-import pyb
-import radio_fast as rf
-from config import master_config, slave_config  # Configs for the hardware
-
-messages = rf.MessagePair()                     # Instantiate messages and check compatibility
+import pyb, radio_fast
+from config import master_config, slave_config, FromMaster, ToMaster
 def test_master():
-    m = rf.Master(master_config, messages)
+    m = radio_fast.Master(master_config)
+    send_msg = FromMaster()
     while True:
-        result = m.exchange()
-        if result is not None:
-            print(result.i0)
+        rx_msg = m.exchange(send_msg)
+        if rx_msg is not None:
+            print(rx_msg.i0)
         else:
             print('Timeout')
-        messages.from_master.i0 += 1
+        send_msg.i0 += 1
         pyb.delay(1000)
 ```
 
@@ -95,43 +90,43 @@ Module radio_fast.py
 Class Master
 ~~~~~~~~~~~~
 
-This is subclassed from RadioFast which is subclassed from NRF24L01 in nrf24l01.py.
+The class hierarchy is Master-RadioFast-NRF24L01 (in nrf24l01.py).
 
 Constructor
 
-This takes two mandatory arguments, a ``RadioConfig`` object and a ``MessagePair`` object. The former
-(defined in ``config.py``) details the connections to the nRF24l01 module and channel in use. The latter
-contains the messages to be exchanged between the devices, again defined in ``config.py``.
+This takes one mandatory argument, a ``RadioConfig`` object. This (defined in ``config.py``) details
+the connections to the nRF24l01 module and channel in use.
 
 method exchange()
 
-No arguments. Attempts to send a message to the slave and accept a response.
+Argument: ``msg_send`` a message for transmission. Attempts to send it to the slave and returns a response.
 
 Results.
 
-On success, returns a ``ToMaster`` message object.
+On success, returns a ``ToMaster`` message instance with contents unpacked from the byte stream.
 On timeout returns None.
 
 Class Slave
 ~~~~~~~~~~~
 
-This is subclassed from RadioFast which is subclassed from NRF24L01 in nrf24l01.py.
+The class hierarchy is Slave-RadioFast-NRF24L01 (in nrf24l01.py).
 
 Constructor
 
-This takes two mandatory arguments, a ``RadioConfig`` object and a ``MessagePair`` object. The former
-(defined in ``config.py``) details the connections to the nRF24l01 module and channel in use. The latter
-contains the messages to be exchanged between the devices, again defined in ``config.py``.
+This takes one mandatory argument, a ``RadioConfig`` object. This (defined in ``config.py``) details
+the connections to the nRF24l01 module and channel in use.
 
 method exchange()
 
-Argument ``block`` Boolean, default False. Determines whether ``exchange()`` waits for a transmission
-from the master (blocking transfer) or returns immediately with a status. If a message is received from the
-master it is unpacked. The return message is packed and transmitted to the master.
+Arguments:
+1. The message for transmission.
+2. ``block`` Boolean, default True. Determines whether ``exchange()`` waits for a transmission
+from the master (blocking transfer) or returns immediately with a status. If a message is received
+from the master it is unpacked.
 
 Results.
 
-On success, returns a ``FromMaster`` message object.
+On success, returns an unpacked ``FromMaster`` message object.
 On timeout returns None.
 If no data has been sent (nonblocking read only) returns False.
 
@@ -143,28 +138,24 @@ which determines the maximum time ``Master`` or ``Slave`` instances will wait to
 In practice with short messages the radio times out in less than the default of 100mS, but this variable aims
 to set an approximate maximum.
 
-Class MessagePair
+Class RadioConfig
 ~~~~~~~~~~~~~~~~~
 
-Master and slave modules must instantiate this class. It contains a ``FromMaster`` and a ``ToMaster``
-message (defined in config.py) and is required to instantiate ``Master`` and ``Slave`` objects. Its
-constructor takes no arguments.
-
-Instance variables
-
-from_master ``FromMaster`` message object
-to_master ``ToMaster`` message object
+This should be fairly self-explanatory: it provides a means of defining physical connections to the
+nRF24l01 and the channel number (the latter is a class variable as its value must be identical for both
+ends of the link).
 
 Module config.py
 ----------------
 
-This module defines the message format for messages from master to slave and from slave to master. As
-configured three integers are sent in either direction - in practice these message formats will need to
-be adjusted to suit the application. Both messages must pack to the same length: if neccessary use
-redundant data items to achieve this. An assertion failure will be raised if this condition is not met.
+This module is intended to be modified by the user. It defines the message format for messages from master
+to slave and from slave to master. As configured three integers are sent in either direction - in practice
+these message formats will be adjusted to suit the application. Both messages must pack to the same length:
+if neccessary use redundant data items to achieve this. An assertion failure will be raised when a message
+is instantiated if this condition is not met. Tha packed message length must be <= 32 bytes: an
+assertion failure will occur otherwise when a radio is instantiated.
 
-It also implements the ``RadioConfig`` class that defines the hardware connections to the nRF24l01 and
-the channel in use.
+It also implements ``RadioConfig`` instances corresponding to the hardware in use.
 
 Classes FromMaster and ToMaster
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -174,17 +165,16 @@ for an application the instance variables, ``fmt`` format string, ``pack()`` and
 will need to be adjusted. Message formats may differ so long as their packed sizes are identical and in
 range 1 to 32 bytes.
 
-Class RadioConfig
-~~~~~~~~~~~~~~~~~
+Module msg.py
+-------------
 
-This should be fairly self-explanatory: it provides a means of defining physical connections to the
-nRF24l01 and the channel number (the latter must be identical for both ends of the link).
+This defines the ``RadioConfig`` and ``msg`` classes used by ``config.py``.
 
 Performance
 -----------
 
-With messages of 12 bytes under good propagation conditions a message exchange takes about 4mS. Where
-timeouts occur these take about 25mS
+With messages of 12 bytes and under good propagation conditions a message exchange takes about 4mS. Where
+timeouts occur these take about 25mS.
 
 Channels
 --------
@@ -195,15 +185,16 @@ freq = 2400 + channel [MHz]
 The maximum channel no. is 125. The ISM (Industrial, Scientific and Medical) band covers 2400-2500MHz and is
 licensed for use in most jurisdictions. It is, however, shared with many other devices including WiFi, Bluetooth
 and microwave ovens. WiFi and Bluetooth generally cut off at 2.4835GHz so channels 85-99 should avoid the risk
-mutual interefrence. Note that frquencies of 2.5GHz and above are not generally licensed for use: check local
-regulations before using these devices.
+mutual interefrence. Note that frequencies of 2.5GHz and above are not generally licensed for use. I am neither
+a lawyer nor an expert on spectrum allocation: check local regulations before using these devices.
 
 FILES
 -----
 
-radio_fast.py The driver.  
-config.py Example config module. Adapt for your wiring and message formats.  
-tests.py Test programs to run on any Pyboard/nRF24l01.  
-rftest.py, nbtest.py Test programs for my own specific hardware. These illustrate use with an LCD display and microthreading
+``radio_fast.py`` The driver.  
+``msg.py`` Classes used by ``config.py``  
+``config.py`` Example config module. Adapt for your wiring and message formats.  
+``tests.py`` Test programs to run on any Pyboard/nRF24l01.  
+``rftest.py``, nbtest.py Test programs for my own specific hardware. These illustrate use with an LCD display and microthreading
 scheduler. The latter tests slave nonblocking reads.  
-README.md This file
+``README.md`` This file

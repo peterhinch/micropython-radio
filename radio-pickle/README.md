@@ -176,7 +176,8 @@ can be calculated and is finite :)
 
 For best performance a protocol based on fixed size, byte packed records should be used. The ``ustruct`` module
 facilitates packing data into bytes far more efficiently than pickle. This is at a cost in programming complexity and
-flexibility as, unlike this driver, record structure and length are set in code. I intend to write such a driver.
+flexibility as, unlike this driver, record structure and length are set in code. The radio-fast directory
+contains such a driver.
 
 The TwoWayRadio Class - tweaking performance
 --------------------------------------------

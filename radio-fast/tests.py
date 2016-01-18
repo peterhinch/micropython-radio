@@ -1,28 +1,27 @@
 # Generic Tests for radio-fast module.
 # Modify config.py to provide master_config and slave_config for your hardware.
-import pyb
-import radio_fast as rf
-from config import master_config, slave_config
+import pyb, radio_fast
+from config import master_config, slave_config, FromMaster, ToMaster
 
-messages = rf.MessagePair()                     # Instantiate messages and check compatibility
-
-def tm():
-    m = rf.Master(master_config, messages)
+def test_master():
+    m = radio_fast.Master(master_config)
+    send_msg = FromMaster()
     while True:
-        result = m.exchange()
+        result = m.exchange(send_msg)
         if result is not None:
             print(result.i0)
         else:
             print('Timeout')
-        messages.from_master.i0 += 1
+        send_msg.i0 += 1
         pyb.delay(1000)
 
-def ts():
-    s = rf.Slave(slave_config, messages)
+def test_slave():
+    s = radio_fast.Slave(slave_config)
+    send_msg = ToMaster()
     while True:
-        result = s.exchange(block = True)       # Wait for master
+        result = s.exchange(send_msg)       # Wait for master
         if result is not None:
             print(result.i0)
         else:
             print('Timeout')
-        messages.to_master.i0 += 1
+        send_msg.i0 += 1

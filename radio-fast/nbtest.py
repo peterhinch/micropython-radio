@@ -5,28 +5,28 @@ import pyb
 import radio_fast as rf
 from usched import Sched, wait, Roundrobin
 from lcdthread import LCD, PINLIST              # Library supporting Hitachi LCD module
-from config import testbox_config, v1_config    # Configs for my hardware
-
-messages = rf.MessagePair()                     # Instantiate messages and check compatibility
+from config import FromMaster, ToMaster, testbox_config, v1_config    # Configs for my hardware
 
 def tm():
-    m = rf.Master(v1_config, messages)          # Master runs on V1 PCB
+    m = rf.Master(v1_config)          # Master runs on V1 PCB
+    send_msg = FromMaster()
     while True:
-        result = m.exchange()
+        result = m.exchange(send_msg)
         if result is not None:
             print(result.i0)
         else:
             print('Timeout')
-        messages.from_master.i0 += 1
+        send_msg.i0 += 1
         pyb.delay(1000)
 
 def slave(lcd):
     yield Roundrobin()
-    s = rf.Slave(testbox_config, messages)      # Slave on testbox
+    s = rf.Slave(testbox_config)      # Slave on testbox
+    send_msg = ToMaster()
     while True:
         while True:
             start = pyb.millis()
-            result = s.exchange(block = False)
+            result = s.exchange(send_msg, block = False)
             t = pyb.elapsed_millis(start)
             yield Roundrobin()
             if result is None:                  # Timeout
@@ -39,7 +39,7 @@ def slave(lcd):
             lcd[0] = str(result.i0)
         lcd[1] = 't = {}mS'.format(t)
         yield Roundrobin()
-        messages.to_master.i0 += 1
+        send_msg.i0 += 1
 
 # Run this on testbox, run tm() on master
 def test():
