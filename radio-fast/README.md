@@ -90,7 +90,8 @@ Module radio_fast.py
 Class Master
 ~~~~~~~~~~~~
 
-The class hierarchy is Master-RadioFast-NRF24L01 (in nrf24l01.py).
+
+The class hierarchy is Master-RadioFast-NRF24L01 (in nrf24l01.py).  
 
 Constructor
 
@@ -159,6 +160,7 @@ It also implements ``RadioConfig`` instances corresponding to the hardware in us
 
 Classes FromMaster and ToMaster
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 
 These define the message contents for messages sent from master to slave and vice versa. To adapt these
 for an application the instance variables, ``fmt`` format string, ``pack()`` and ``unpack()`` methods
