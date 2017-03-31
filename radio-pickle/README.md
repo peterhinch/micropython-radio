@@ -7,7 +7,7 @@ knowledge of Python. This simplicity is achieved at some cost in performance. Th
 Python objects to be exchanged between the two devices. The size of these objects may change dynamically
 as the user program runs. Python's pickle module is employed for object serialisation.
 
-[Back](./README.md)
+[Back](../README.md)
 
 Introduction
 ------------
@@ -211,7 +211,7 @@ pass a string which varies regularly. Pickle saves a copy of the string (if it
 hasn't already occurred) each time until RAM is exhausted. The workround is to
 use any data type other than strings or bytes objects.
 
-The protocol is described in detail [here](./PROTOCOL.md)
+The protocol is described in detail [here](../PROTOCOL.md)
 
 Channels
 --------

@@ -2,7 +2,7 @@
 
 TODO: write it!
 
-[Back](./README.md)
+[Back](../README.md)
 
 # Dependencies
 
@@ -29,4 +29,4 @@ pass a string which varies regularly. Pickle saves a copy of the string (if it
 hasn't already occurred) each time until RAM is exhausted. The workround is to
 use any data type other than strings or bytes objects.
 
-The protocol is described in detail [here](./PROTOCOL.md)
+The protocol is described in detail [here](../PROTOCOL.md)
