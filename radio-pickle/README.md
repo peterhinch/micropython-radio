@@ -202,6 +202,8 @@ The driver is subject to the same limitations as the Python pickle module it use
 types (lists, strings, dictionaries and suchlike) are supported. There are constraints regarding custom
 classes - see the Python documentation. MicroPython has restrictions on subclassing built in types.
 
+The protocol is described in detail [here](./PROTOCOL.md)
+
 Channels
 --------
 
