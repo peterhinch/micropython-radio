@@ -7,8 +7,8 @@ import pyb
 from myconfig import *  # Configs for my hardware
 
 # Simple confidence checks/demo
-async def st_master():  # Test master on V2 PCB.
-    m = rp.Master(config_v2)
+async def st_master():  # Test master on V1 PCB.
+    m = rp.Master(config_v1)
     obj = [0, '']
     x = ord('a')
     while True:
@@ -21,8 +21,8 @@ async def st_master():  # Test master on V2 PCB.
         pyb.delay(1000)
         obj[0] += 1
 
-async def st_slave():  # Test slave: runs on V1 PCB
-    s = rp.Slave(config_v1)
+async def st_slave():  # Test slave: runs on V2 PCB
+    s = rp.Slave(config_v2)
     obj = [0, '']
     x = ord('a')
     while True:

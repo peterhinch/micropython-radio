@@ -72,7 +72,7 @@ class TxMessage(object):
         while not sent:
             await asyncio.sleep(0)
             try:
-                await radio.send(self.outbuf)
+                await radio.as_send(self.outbuf)
                 sent = True
             except OSError:                     # send timed out.
                 pass                            # It may have returned early. Try again if so.
@@ -100,8 +100,10 @@ class TwoWayRadio(NRF24L01):
         self.txmsg = TxMessage()                # Data for transmission
         self.inlist = []                        # List of received bytes objects
 
-    # override: nonblocking wait for tx complete
-    async def send(self, buf, timeout=self.timeout):
+    # nonblocking wait for tx complete. Note default args can't be bound to self.
+    async def as_send(self, buf, timeout=-1):
+        if timeout == -1:
+            timeout = self.timeout
         send_nonblock = self.send_start(buf)
         start = pyb.millis()
         result = None
@@ -147,7 +149,7 @@ class TwoWayRadio(NRF24L01):
         for x in range(self.bye_no):
             await asyncio.sleep(0)
             try:
-                await self.send(self.txmsg.outbuf, timeout = 20)
+                await self.as_send(self.txmsg.outbuf, timeout = 20)
             except OSError:
                 pass
         self.start_listening()
