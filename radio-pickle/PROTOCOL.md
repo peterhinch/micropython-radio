@@ -1,23 +1,20 @@
-RADIO_PICKLE PROTOCOL
----------------------
+# RADIO_PICKLE PROTOCOL
 
-MESSAGE FORMAT
---------------
+## MESSAGE FORMAT
+
 
 Messages consist of a 32 byte bytearray
 b[0] is a command byte
 b[1] is the bytecount of the data (0..30)
 
-COMMANDS
---------
+## COMMANDS
 
 Commands are ``OK``, ``RESEND``, ``BYE` and ``START_SLAVE``.  
 ``OK`` and ``START_SLAVE`` carry data while ``RESEND`` and ``BYE`` have a bytecount of zero
 Commands carrying data have the ``TXDONE`` bit of the command byte set if reception of the
 message completes the data transfer.
 
-PROTOCOL
---------
+## PROTOCOL
 
 The slave checks for a ``START_SLAVE`` message from the master. If none is present
 it raises a ``NoData`` exception: the calling program should repeatedly call
@@ -47,14 +44,12 @@ If the message is still not received it proceeds as follows.
  If it has read all the expected data makes a normal exit.  
  Otherwise it raises an `OSError`` to signify a failed transfer.
 
-Termination
-~~~~~~~~~~~
+### Termination
 
 The protocol is terminated by the current transmitter sending ``TwoWayRadio.bye_no`` ``BYE``
 messages in quick succession (20mS timeout). No reply is expected.
 
-Message send
-~~~~~~~~~~~~
+### Message send
 
 This is subject to a timeout. The transmitter will attept an ``NRF24L01.send()`` with the
 timeout value specified. If it returns before the timeout has expired this will be repeated
@@ -63,8 +58,7 @@ timeout is defined in ``TwoWayRadio.timeout`` and is currently 100mS. The aim is
 approximately the same timeout value applies to the transmitter and the receiver
 (``TxMessage.sendbuf() and ``TwoWayRadio.await_message()`` respectively).
 
-USAGE
------
+## USAGE
 
 Typical master code, assuming a master has been instantiated as ``m``, is as follows:
 
