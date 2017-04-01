@@ -1,12 +1,47 @@
 import radio_pickle as rp
 import pyb
-from myconfig import config_master, config_slave  # Configs for my hardware
+# Configs for my hardware
+from myconfig import config_tb, config_v1
 
+# Simple confidence checks
+def tm():                           # Test master. Runs on testbox.
+    m = rp.Master(config_tb)
+    obj = [0, '']
+    x = ord('a')
+    while True:
+        try:
+            result = m.exchange(obj)
+        except OSError:
+            print("Timeout")
+        else:
+            print(result)
+        pyb.delay(1000)
+        obj[0] += 1
+
+def ts():                           # Test slave: runs on V1 board.
+    s = rp.Slave(config_v1)
+    obj = [0, '']
+    x = ord('a')
+    while True:
+        try:
+            result = s.exchange(obj)
+        except rp.NoData:           # Master has sent nothing.
+            pass
+        except OSError:
+            print("Timeout")
+        else:
+            print(result)
+            obj[0] += 1
+            obj[1] += chr(x)
+            x = x +1 if x < ord('z') else ord('a')
+            if len(obj[1]) > 12:
+                obj[1] = ''         # Fit in LCD.
 
 # These tests run a range of packet sizes. Because they iterate over different lengths, if
 # run for 1.5 hours a wide range of asymmetrical packet sizes are tested. The receiver
 # sends back the length of the string received. If this doesn't match what was sent, the
 # test quits.
+# Their purpose is to validate the protocol.
 def test_slave():
     s = rp.Slave(config_slave)
     obj = [0, ''] # This is the object to be sent
@@ -45,37 +80,3 @@ def test_master():
         obj[1] = obj[1] + chr(x) if len(obj[1]) < 71 else '' # Keep from getting too huge
         x = x +1 if x < ord('z') else ord('a') 
         obj[0] = len(obj[1])
-
-# Simple confidence checks
-def tm():                                       # Test master. Runs on testbox
-    m = rp.Master(config_master)
-    obj = [0, '']
-    x = ord('a')
-    while True:
-        try:
-            result = m.exchange(obj)
-        except OSError:
-            print("Timeout")
-        else:
-            print(result)
-        pyb.delay(1000)
-        obj[0] += 1
-
-def ts():                                       # Test slave: runs on V1 board
-    s = rp.Slave(config_slave)
-    obj = [0, '']
-    x = ord('a')
-    while True:
-        try:
-            result = s.exchange(obj)
-        except rp.NoData:                       # Master has sent nothing
-            pass
-        except OSError:
-            print("Timeout")
-        else:
-            print(result)
-            obj[0] += 1
-            obj[1] += chr(x)
-            x = x +1 if x < ord('z') else ord('a')
-            if len(obj[1]) > 12:
-                obj[1] = ''         # Fit in LCD

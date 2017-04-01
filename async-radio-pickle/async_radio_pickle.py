@@ -2,13 +2,15 @@
 # A protocol for exchanging arbitrary Python objects between a pair of nRF24L01+ radios
 # Uses uasyncio to achieve nonblocking behaviour (at the expense of speed).
 
-import pyb, pickle
+import pyb, pickle, utime, gc
 import uasyncio as asyncio
+from micropython import const
 from nrf24l01 import NRF24L01, POWER_3, SPEED_250K
 
 COMMAND = const(0)                              # Byte 0 of message is command
 BYTECOUNT = const(1)                            # Count of data bytes
 MSGSTART = const(2)
+PAYLOAD_SIZE = const(32)
 MAXLEN = const(30)                              # Space left for data
 
 OK = const(1)                                   # Commands
@@ -18,13 +20,14 @@ START_SLAVE = const(4)
 TXDONE = const(0x20)                            # Bit set for last message
 MASK = const(0xdf)
 
+
 class RadioSetup(object):                       # Configuration for an nRF24L01 radio
-    payload_size = 32                           # Necessarily shared by both instances
-    channel = 99
+    channel = 99                                # Necessarily shared by both instances
     def __init__(self, *, spi_no, csn_pin, ce_pin):# May differ
         self.spi_no = spi_no
         self.ce_pin = ce_pin
         self.csn_pin = csn_pin
+
 
 class CommandException(OSError):                # Unexpected command received
     pass
@@ -32,6 +35,7 @@ class Success(Exception):                       # Bail out because of successful
     pass
 class NoData(Exception):                        # Slave raises it if master has sent npothing
     pass
+
 
 class TxMessage(object):
     def __init__(self):
@@ -82,13 +86,14 @@ class TxMessage(object):
                     raise OSError
         radio.start_listening()
 
+
 class TwoWayRadio(NRF24L01):
     pipes = (b'\xf0\xf0\xf0\xf0\xe1', b'\xf0\xf0\xf0\xf0\xd2')
     max_resend_requests = 1                     # No. of times receiver requests retransmission
     bye_no = 1                                  # No. of times BYE is sent
     timeout = 300                               # No. of mS tx and rx wait for each other
     def __init__(self, master, config):
-        super().__init__(pyb.SPI(config.spi_no), pyb.Pin(config.csn_pin), pyb.Pin(config.ce_pin), config.channel, config.payload_size)
+        super().__init__(pyb.SPI(config.spi_no), pyb.Pin(config.csn_pin), pyb.Pin(config.ce_pin), config.channel, PAYLOAD_SIZE)
         if master:
             self.open_tx_pipe(TwoWayRadio.pipes[0])
             self.open_rx_pipe(1, TwoWayRadio.pipes[1])
@@ -154,8 +159,7 @@ class TwoWayRadio(NRF24L01):
                 pass
         self.start_listening()
 
-# With good RF transmission a single block message takes about 5.2mS. N blocks approx 5.2NmS
-    async def run_protocol(self, rxdone, initcmd):    # initial cmd is START_SLAVE (master) or OK (slave)
+    async def run_protocol(self, rxdone, initcmd):  # initial cmd is START_SLAVE (master) or OK (slave)
         txdone = False
         while not (txdone and rxdone):          # Continue while there are bytes to send or receive
             sent = False
@@ -185,67 +189,104 @@ class TwoWayRadio(NRF24L01):
             if txdone and rxdone:
                 await self.goodbye()            # Over and out: no response expected
 
-class Master(TwoWayRadio):
-    def __init__(self, config):
-        super().__init__(True, config)
 
-    async def exchange(self, objtx=None):       # Call when transmit-receive required.
-        self.start_protocol(objtx)              # Initialise the overall timeout and TxMessage object
-        try:
-            await self.run_protocol(rxdone = False, initcmd = START_SLAVE)
-        except Success:                         # Slave has signalled completion
-            pass
-        finally:
-            self.stop_listening()               # Flush buffers prior to another run. Master doesn't listen.
-        strpickle = ''.join(self.inlist)
-        objrx = pickle.loads(strpickle)
-        return objrx
-
-class Slave(TwoWayRadio):
-    def __init__(self, config):
-        super().__init__(False, config)
+class Radio(TwoWayRadio):
+    def __init__(self, config, master):
+        super().__init__(master, config)
+        self._master = master
 
     async def exchange(self, objtx=None):       # Caller polls this and (typically) ignores NoData
-        if not self.any():
-            raise NoData
         self.start_protocol(objtx)              # Initialise the overall timeout and TxMessage object
-        try:
-            cmd, bytes_rx = await self.await_message((START_SLAVE,)) # Initial message: cmd should be START_SLAVE
-        except CommandException:                # Occurs harmlessly when we pick up a BYE from
-            raise NoData                        # previous transfer. Caller ignores NoData
-        try:
-            await self.run_protocol(rxdone = cmd & TXDONE > 0, initcmd = OK) # Pass rxdone if master set TXDONE
-        except Success:                         # Master has signalled completion
-            pass                                # Other exceptions are handled by caller
+        if self._master:
+            try:
+                await self.run_protocol(rxdone = False, initcmd = START_SLAVE)
+            except Success:                     # Slave has signalled completion
+                pass
+            finally:
+                self.stop_listening()           # Flush buffers prior to another run. Master doesn't listen.
+        else:
+            ok = False
+            try:
+                cmd, bytes_rx = await self.await_message((START_SLAVE,)) # Initial message: cmd should be START_SLAVE
+                ok = True
+            except CommandException:            # Occurs harmlessly when we pick up a BYE from
+                pass                            # previous transfer.
+            if not ok:                          # Try again. If this fails caller handles exception
+                cmd, bytes_rx = await self.await_message((START_SLAVE,))
+            try:
+                await self.run_protocol(rxdone = cmd & TXDONE > 0, initcmd = OK) # Pass rxdone if master set TXDONE
+            except Success:                     # Master has signalled completion
+                pass                            # Other exceptions are handled by caller
         strpickle = ''.join(self.inlist)        # No exceptions: handle result
         objrx = pickle.loads(strpickle)
         return objrx
 
-class Channel():
-    def __init__(self, config, master, txcb = lambda : None, rxcb = lambda _ : None):
-        self.master = master
-        self.radio = Master(config) if master else Slave(config)
-        self.txdata = None
-        self.rxdata = None
-        self.txcb = txcb
-        self.rxcb = rxcb
-        self.up = False
-        loop = asyncio.get_event_loop()
-        loop.create_task(self.run(1000))
 
-    async def run(self):
+class Channel():
+    latency_ms = 1000
+    def __init__(self, config, master, *, txcb = lambda : None, rxcb = None, statecb = lambda _ : None):
+        self._radio = Radio(config, master)
+        self._master = master
+        self._txdata = None
+        self._rxdata = None
+        self._txcb = txcb
+        self._rxcb = rxcb
+        self._statecb = statecb
+        self._link_is_up = False
+        loop = asyncio.get_event_loop()
+        loop.create_task(self._run())
+        loop.create_task(self._garbage_collect())
+
+    async def _run(self):
         while True:
             try:
-                self.rxdata = await self.radio.exchange(self.txdata)
-                self.up = True
-            except NoData:
-                self.up = True
-            except OSError:
-                self.up = False
-            if self.up:
-                if self.txdata is not None:
-                    self.txdata = None
-                    self.txcb()  # User may supply data if available
-                if self.rxdata is not None:
-                    self.rxcb(self.rxdata)
-            await asyncio.sleep_ms(interval)  # think more about this
+                self._rxdata = await self._radio.exchange(self._txdata)
+                if not self._link_is_up:
+                    self._statecb(True)
+                self._link_is_up = True
+            except NoData:  # Received an empty message: link is OK
+                if not self._link_is_up:
+                    self._statecb(True)
+                self._link_is_up = True
+            except CommandException:
+                print('Command exception')  # debug
+            except OSError:  # A timeout occurred
+                self._link_is_up = False
+                self._statecb(False)
+            if self._link_is_up:  # A message was received so ours was sent
+                if self._txdata is not None:
+                    self._txdata = None
+                    self._txcb()  # User may supply data if available
+                if self._rxdata is not None and self._rxcb is not None:
+                    self._rxcb(self._rxdata)
+                    self._rxdata = None
+
+            tstart = utime.ticks_ms()  # Master pauses between transmissions
+            if self._master:
+                while utime.ticks_diff(utime.ticks_ms(), tstart) < self.latency_ms:
+                    await asyncio.sleep_ms(0)
+                    if self._txdata is not None:  # User has called send()
+                        break
+            else:  # Slave waits for message from master
+                while not self._radio.any():
+                    await asyncio.sleep_ms(0)
+
+    def txready(self):
+        return self._txdata is None
+
+    def send(self, data):
+        if self._txdata is None:
+            self._txdata = data
+            return True
+        return False
+
+    def up(self):
+        return self._link_is_up
+
+    async def _garbage_collect(self):
+        led = pyb.LED(2)
+        while True:
+            led.toggle()
+            await asyncio.sleep_ms(500)
+            gc.collect()
+            gc.threshold(gc.mem_free() // 4 + gc.mem_alloc())

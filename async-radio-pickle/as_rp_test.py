@@ -40,67 +40,48 @@ async def st_slave():  # Test slave: runs on V2 PCB
             if len(obj[1]) > 12:
                 obj[1] = ''         # Fit in LCD
 
+
+
+# Generator returns changing test data to transmit
+def make_data_xxxx():
+    obj = [0, '']
+    x = ord('a')
+    while True:
+        yield obj
+        obj[0] += 1
+        obj[1] += chr(x)
+        x = x +1 if x < ord('z') else ord('a')
+        if len(obj[1]) > 12:
+            obj[1] = ''         # Fit in LCD
+
+def make_data():  # try no strings for reliability
+    obj = [0, 0]
+    while True:
+        yield obj
+        obj[0] += 1
+        obj[1] = pyb.rng()
+
+async def test_channel(master):
+    if master:
+        chan = rp.Channel(config_v1, True, rxcb = lambda data: print(data),
+                          statecb = lambda state: print('Link state', state))
+    else:
+        chan = rp.Channel(config_v2, False, rxcb = lambda data: print(data),
+                          statecb = lambda state: print('Link state', state))
+    md = make_data()
+    arbitrary_object = next(md)
+    while True:
+        await asyncio.sleep_ms(1500)
+        if chan.send(arbitrary_object):
+            arbitrary_object = next(md)
+
 def tm():
     loop = asyncio.get_event_loop()
-    loop.create_task(st_master()) # Schedule ASAP
+    loop.create_task(test_channel(1)) # Schedule ASAP
     loop.run_forever()
 
 def ts():
     loop = asyncio.get_event_loop()
-    loop.create_task(st_slave()) # Schedule ASAP
-    loop.run_forever()
-
-# *********** FULL TEST ***********
-# These tests run a range of packet sizes. Because they iterate over different lengths, if
-# run for 1.5 hours a wide range of asymmetrical packet sizes are tested. The receiver
-# sends back the length of the string received. If this doesn't match what was sent, the
-# test quits.
-async def at_slave():
-    s = rp.Slave(config_slave)
-    obj = [0, ''] # This is the object to be sent
-    x = ord('a')
-    while True:
-        try:
-            result = s.exchange(obj)
-        except rp.NoData:
-            pass # Master has sent no data. Try again.
-        except OSError: # Optionally trap timeout errors (e.g. out of range)
-            print("Timeout")
-        else:
-            print(result) # Print the received object
-            if result[0] != len(result[1]):
-                print('Error')
-                break
-            obj[1] = obj[1] + chr(x) if len(obj[1]) < 70 else '' # Keep from getting too huge
-            x = x +1 if x < ord('z') else ord('a') 
-            obj[0] = len(obj[1])
-
-async def at_master():
-    m = rp.Master(config_master)
-    obj = [0, ''] # object to be sent
-    x = ord('a')
-    while True:
-        try:
-            result = m.exchange(obj)
-        except OSError:  # Optionally trap timeout errors (e.g. out of range)
-            print("Timeout")
-        else:
-            print(result)  # No errors raised
-            if result[0] != len(result[1]):
-                print('Error')
-                break
-        pyb.delay(1000)  # send 1 message per sec
-        obj[1] = obj[1] + chr(x) if len(obj[1]) < 71 else ''  # Keep from getting too huge
-        x = x +1 if x < ord('z') else ord('a') 
-        obj[0] = len(obj[1])
-
-def test_master():
-    loop = asyncio.get_event_loop()
-    loop.create_task(at_master()) # Schedule ASAP
-    loop.run_forever()
-
-def test_slave():
-    loop = asyncio.get_event_loop()
-    loop.create_task(at_slave()) # Schedule ASAP
+    loop.create_task(test_channel(0)) # Schedule ASAP
     loop.run_forever()
 
