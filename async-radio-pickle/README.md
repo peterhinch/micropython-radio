@@ -110,7 +110,8 @@ both ``Channel`` instances. See notes below.
 This takes the following keyword only arguments:  
  * ``spi_no`` SPI bus no.  
  * ``csn_pin`` Pyboard pin used for CSN expressed as a string.  
- * ``ce_pin`` Pyboard pin used for CE expressed as a string.  
+ * ``ce_pin`` Pyboard pin used for CE expressed as a string.
+
 ``Channel`` instances may differ in respect of these values depending on your
 hardware.  
 
