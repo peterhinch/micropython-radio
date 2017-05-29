@@ -4,7 +4,6 @@
 
 import pyb
 import pickle
-import utime
 import gc
 import uasyncio as asyncio
 from micropython import const
@@ -40,16 +39,8 @@ async def _garbage_collect():
         gc.threshold(gc.mem_free() // 4 + gc.mem_alloc())
 
 
-class ProtocolError(OSError):
-    pass
-
-
-class Success(Exception):                       # Bail out because of successful completion
-    pass
-
-
-class TxQueue():                                # Transmit queue
-    def __init__(self, size):
+class TxQueue():                                # Transmit queue returns the default
+    def __init__(self, size):                   # transmit object (None) if no data.
         self.size = size
         self.q =[]
 
@@ -59,7 +50,7 @@ class TxQueue():                                # Transmit queue
         self.q.append(data)
         return True
 
-    def get(self):                              # Return None if no data
+    def get(self):
         if len(self.q):
             return self.q.pop(0)
 
@@ -121,60 +112,62 @@ class TwoWayRadio(NRF24L01):
     # Asynchronous send. Raises no errors: returns status. Waits for completion subject to timeout.
     # Return is immediate if result is success or failure.
     async def as_send(self, timeout=None):
+        self.send_start(self.txmsg.outbuf)      # Non blocking start TX
         if timeout is None:
             timeout = self.timeout
-        self.send_start(self.txmsg.outbuf)      # Non blocking start TX
-        start = utime.ticks_ms()
-        result = None
-        while result is None and utime.ticks_diff(utime.ticks_ms(), start) < timeout:
-            await asyncio.sleep(0)
+        for _ in range(max(timeout // 10, 1)):
+            await asyncio.sleep_ms(10)
             result = self.send_done()           # 1 == success, 2 == fail (None == in progress)
+            if result is not None:
+                break
+        self.start_listening()
         return result
 
     # Asynchronously send a message block
     async def send_msg_block(self, cmd):
         self.stop_listening()                   # Flush buffers
         self.txmsg.set_cmd(cmd)                 # Prepare message block for transmission
-        start = utime.ticks_ms()
-        while utime.ticks_diff(utime.ticks_ms(), start) < self.timeout:
-            # On timeout as_send() returns None. On fail (2) or success (1) returns immediately.
-            res = await self.as_send()          # loop repeatedly on fail
-            if res == 1:                        # Success.
-                self.start_listening()
-                break
-            if res == 2:
-                await asyncio.sleep_ms(self.timeout // 5)  # Possible RF interference?
-        else:                                   # Timeout
-            self.start_listening()
-            print('Raise PE: send_msg_block')
-            raise ProtocolError
+        res = await self.as_send()              # Attempt to send
+        return res == 1                         # False on fail or timeout.
+        #start = utime.ticks_ms()
+        #while utime.ticks_diff(utime.ticks_ms(), start) < self.timeout:
+            ## On timeout as_send() returns None. On fail (2) or success (1) returns immediately.
+            #res = await self.as_send()          # loop repeatedly on fail
+            #if res == 1:                        # Success.
+                #self.start_listening()
+                #break
+            #if res == 2:
+                #await asyncio.sleep_ms(self.timeout // 5)  # Possible RF interference?
+        #else:                                   # Timeout
+            #self.start_listening()
+            #return False
+        #return True
 
-    def get_latest_msg(self):
-        inbuf = None
-        while self.any():                       # Immediate return. False if nothing pending.
-            inbuf = self.recv()
-        return inbuf
+    def parse(self):
+        strpickle = ''.join(self.inlist)
+        if strpickle:                           # data was sent
+            return pickle.loads(strpickle)      # Throws exception on fail
 
 # Wait for a message. If forever (i.e. slave waiting for START_SLAVE) blocks until msg received.
-# Otherwise raises ProtocolError on timeout.
-# Raises ProtocolError on malformed message or unexpected command.
+# Returns command received or 0 on failure
     async def await_message(self, allowed_cmds, forever=False, rxdone=False):
-        start = utime.ticks_ms()
+        iterations = self.timeout // 10
         while not self.any():
-            if not forever and utime.ticks_diff(utime.ticks_ms(), start) > self.timeout:
-                print('Raise PE: await_msg 1')
-                raise ProtocolError             # Timeout
-            await asyncio.sleep(0)
+            if not forever:
+                if iterations <= 0:
+                    return 0
+                iterations -= 1
+            await asyncio.sleep_ms(10)
 
-        inbuf = self.get_latest_msg()
-        await asyncio.sleep(0)
+        while self.any():                       # Discard all but latest message
+            inbuf = self.recv()
+            await asyncio.sleep_ms(10)
+
         if inbuf is None or len(inbuf) < MSGSTART:
-            print('Raise PE: await_msg 2')
-            raise ProtocolError
+            return 0
         cmd = inbuf[0] & MASK
         if cmd not in allowed_cmds:
-            print('Raise PE: await_msg 3')
-            raise ProtocolError                 # Unexpected response
+            return 0                            # Unexpected response
         nbytes = inbuf[BYTECOUNT]               # Received bytes
         if nbytes and not rxdone:               # Can receive zero length messages (responses to tx)
             self.inlist.append(inbuf[MSGSTART: MSGSTART + nbytes].decode('utf8')) # List of received strings
@@ -186,21 +179,22 @@ class TwoWayRadio(NRF24L01):
         await self.as_send(timeout = 20)        # return: don't care about failure
         self.start_listening()
 
-    async def run_protocol(self, master):
+    # Core protocol. Returns status, data.
+    # On error - timeout or parse failure - returns False, None
+    # Success returns True, received object which may be None.
+    async def run_protocol(self):
         txdone = False
         rxdone = False
-        if master:
+        if self._master:
             self.inlist = []                    # Master: initialise RX
             send_cmd = START_SLAVE
         else:                                   # Slave waits for master discarding messages. It
             started = False                     # send nothing until it gets START_SLAVE
             while not started:
                 self.inlist = []                # Discard any previous bad message
-                try:
-                    cmd_raw = await self.await_message((START_SLAVE,), forever=True)
+                cmd_raw = await self.await_message((START_SLAVE,), forever=True)
+                if cmd_raw:
                     started = True
-                except ProtocolError:           # Wait for master to restart protocol
-                    pass
             rxdone = cmd_raw & TXDONE
             send_cmd = OK                       # Always send OK before no data BYE command
                                                 # Symmetrical from here
@@ -211,77 +205,68 @@ class TwoWayRadio(NRF24L01):
             cmd_raw = 0
             sent = False
             while not sent:                     # Send and receive a message block until success
-                await self.send_msg_block(send_cmd)  # Timeout ProtocolError handled by caller
-                try:                            # Send the output buffer until success
-                    print('Await with rxdone = ', rxdone)
+                if not await self.send_msg_block(send_cmd):  # Timeout handled by caller
+                    return False, None
+                while resend_rq_count <= self.max_resend_requests:  # Send the output buffer until success
+                    await asyncio.sleep_ms(10)
                     cmd_raw = await self.await_message((OK, RESEND, BYE), rxdone)  # rxdone handles case where BYE missed
+#                    print('Await with rxdone = ', rxdone, 'got', cmd_raw)
+                    if not cmd_raw:
+                        resend_rq_count += 1
+                        send_cmd = RESEND       # Request resend (with a zero length message)
+                        continue
+
                     cmd = cmd_raw & MASK        # Clear TXDONE bit
                     if cmd == BYE:              # Normal end to protocol: target has sent BYE
-# master always exits here
-                        print('Raise success. BYE received. Inlist:', self.inlist)
-                        raise Success           # no response is required. Quit protocol.
-                except ProtocolError:           # Timed out waiting for message: request retransmission
-                    if resend_rq_count >= self.max_resend_requests:
-                        print('Raise PE: run_protocol')
-                        raise                   # Abandon. Caller retries whole message.
-                    resend_rq_count += 1
-                    send_cmd = RESEND           # Request resend (with a zero length message)
+#                        print('Success. BYE received. Inlist:', self.inlist)
+                        try:                    # no response is required. Quit protocol.
+                            return True, self.parse()
+                        except:                 # Parse fail. Should never occur.
+#                            print('Parse fail 1.')
+                            self.failcount += 1 # DEBUG
+                            return False, None
+                    break                       # Got OK or RESEND
+                else:                           # Retransmissions have failed
+                    return False, None
 
                 sent = cmd == OK                # neither we nor the slave timed out
                                                 # If slave requested retransmission we loop again
                 send_cmd = OK                   # prepare for it in case we do: we repeat the data with OK
             txdone = self.txmsg.next_msg()
             rxdone = rxdone or cmd_raw & TXDONE
-            print('Txdone: {} rxdone: {} inlist: {}'.format(txdone, rxdone, self.inlist))
-            if txdone and rxdone:
-                parse_ok = True
-                strpickle = ''.join(self.inlist)
-                if strpickle:                    # data was sent
-                    try:
-                        pickle.loads(strpickle)
-                    except:  # NameError (Exception subclass)
-                        parse_ok = False        # Remote times out and re-sends
-                if parse_ok:
-                    await self.goodbye()        # Over and out: no response expected, no exceptions raised.
-    # slave always exits here except once printed Success prior to sending a dupe
-                    print('BYE sent.')
-                else:
-                    print('Raise PE: run_protocol Parse fail')
-                    raise ProtocolError
-
-    async def exchange(self, objtx, master):
-        self.txmsg.initialise(objtx)            # Set up TX message object
+#            print('Txdone: {} rxdone: {} inlist: {}'.format(txdone, rxdone, self.inlist))
         try:
-            await self.run_protocol(master)
-        except Success:
-            pass
-        finally:                                # Even on ProtocolError
-            if master:
+            result = self.parse()
+        except:
+            #print('Parse fail 2.')
+            self.failcount += 1 # DEBUG
+            return False, None
+
+        await self.goodbye()                    # Over and out: no response expected.
+#        print('BYE sent.')
+        return True, result
+
+    async def exchange(self, objtx):
+        self.txmsg.initialise(objtx)            # Set up TX message object
+        status, objrx = await self.run_protocol()
+        if not status:
+            if self._master:
                 self.stop_listening()           # Flush buffers. Master doesn't listen.
-        strpickle = ''.join(self.inlist)
-        if strpickle:                           # BYE has no data: return None
-            try:
-                objrx = pickle.loads(strpickle)
-            except:  # NameError (Exception subclass)
-                self.failcount += 1  # DEBUG
-                print('Raise PE: Pickle fail. strpickle = ', strpickle)
-                raise ProtocolError
-            return objrx
+        return status, objrx
 
 
 # TODO callback args
 class Channel():
-    latency = 1000
+#    latency = 1000
     def __init__(self, config, master, *, txqsize=20,
                  txcb = dolittle, rxcb=dolittle, statecb=dolittle):
         self._radio = TwoWayRadio(config, master)
         self._master = master
         self._txq = TxQueue(txqsize)
-        self._txcb = txcb  # User callbacks
+        self._txcb = txcb                       # User callbacks
         self._rxcb = rxcb
         self._statecb = statecb
         self._link_is_up = False                # Ensure callback occurs when link activates
-        self._last_msg_sent = True              # Status of last transmission
         loop = asyncio.get_event_loop()
         loop.create_task(self._run())
         loop.create_task(_garbage_collect())
@@ -297,39 +282,42 @@ class Channel():
         self._link_is_up = value
 
     async def _run(self):
+        radio = self._radio
+        msg_delay = 100                         # Normal delay between master messages (ms)
+                                                # Worst-case time to allow for slave to time out
+        error_delay = msg_delay + (radio.max_resend_requests + 1) * radio.timeout
+        last_msg_sent = True                    # Status of last transmission
         txdata = None
         while True:
             rxdata = None
-            start = utime.ticks_ms()
-            if self._last_msg_sent:             # Last TX was successful
+            if last_msg_sent:                   # Last TX was successful
                 txdata = self._txq.get()        # Get new data or None.
-                print('Popped:', txdata, 'Last msg sent:', self._last_msg_sent)                                # If TX failed, leave txdata for retry. Can result in
                                                 # duplicate messages if RX success not detected by sender
-            try:
-                print('Sending', txdata)
-                rxdata = await self._radio.exchange(txdata, self._master)
-                print('Sent', txdata)
+            status, rxdata = await radio.exchange(txdata)
+            if status:
+#                print('Sent: ', txdata)
                 self._txcb()
                 self.link = True
                 if txdata is not None:          # Last message was sent correctly
-                    self._last_msg_sent = True
-                    print('Last msg sent:', self._last_msg_sent)
-            except ProtocolError:               # A timeout or bad rx message occurred
+                    last_msg_sent = True
+            else:                               # A timeout or bad rx message occurred
+#                print('Timeout or bad rx message.')
                 self.link = False
                 if txdata is not None:
-                    self._last_msg_sent = False
-                    print('Last msg sent:', self._last_msg_sent)
+                    last_msg_sent = False
+#                print('Failed txdata: ', txdata)
+#                print('Failed rxdata: ', rxdata)
 
             if rxdata is not None :
                 self._rxcb(rxdata)
                 rxdata = None
 
-            if self._master:                    # Pause to allow slave to time out on error
-                delay = self.latency - utime.ticks_diff(utime.ticks_ms(), start)
-                await asyncio.sleep_ms(max(delay, 0))
+            if self._master:                    # Pause to allow slave to time out on error ?????
+                delay = msg_delay if self.link else error_delay
+                await asyncio.sleep_ms(delay)
 
     def txrdy(self):
         return self._txq.txrdy()
 
     def send(self, data):
-        return self._txq.put(data)             # Return True if succeeded.
+        return self._txq.put(data)              # Return success status.

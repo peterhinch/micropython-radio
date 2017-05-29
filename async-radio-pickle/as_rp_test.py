@@ -3,28 +3,31 @@
 import uasyncio as asyncio
 import async_radio_pickle as rp
 import pyb
+import gc
+import micropython  # Test for string interning issue #2280
 from myconfig import *  # Configs for my hardware
 
-green_led = pyb.LED(2)
 red_led = pyb.LED(1)
-
+green_led = pyb.LED(2)
+yellow_led = pyb.LED(3)
+MAXLEN = 100  # Max string length (12 fits LCD)
 # Generator returns changing test data to transmit
 def make_ascii():
     obj = [0, '']
     x = ord('a')
     while True:
-        yield obj
+        yield obj[:]
         obj[0] += 1
         obj[1] += chr(x)
         x = x +1 if x < ord('z') else ord('a')
-        if len(obj[1]) > 100: # 12:
-            obj[1] = ''         # Fit in LCD
+        if len(obj[1]) > MAXLEN:
+            obj[1] = ''
 
 # This version creates short integers
 def make_data():
     obj = [0, 0]
     while True:
-        yield obj
+        yield obj[:]  # Must create copy
         obj[0] += 1
         obj[1] = pyb.rng()
 
@@ -46,18 +49,27 @@ missing = 0
 dupe = 0
 rx_started = False
 started = False
+strlen = 0
+strfail = 0
 def cb_rx(data):
-    global last_num, missing, dupe, rx_started
+    global last_num, missing, dupe, rx_started, strlen, strfail
+    print(data)
+    yellow_led.toggle()
     num = data[0]  # Incrementing recieved message no.
     rx_started = True
     if started and num != last_num + 1:
         if num == last_num:
             dupe += 1
         elif num > last_num + 1:
-            raise OSError('Missing record') # TEST
+            raise OSError('Missing record')
             missing += 1
+    s = data[1]
+    if isinstance(s, str) or isinstance(s, bytes):
+        if started and not num == last_num: # ignore dupes
+            if len(s) != (strlen + 1) % (MAXLEN + 1): # error
+                strfail += 1
+        strlen = len(s)
     last_num = num
-    print(data)
 
 async def report(channel):  # DEBUG
     global started
@@ -66,9 +78,12 @@ async def report(channel):  # DEBUG
     await asyncio.sleep(30)
     print('Start recording statistics')
     started = True
+    fs = '************** Fail count: {} dupes: {} missing: {} wrong length: {}'
     while True:
-        print('Fail count: {} dupes: {} missing: {}'.format(channel._radio.failcount, dupe, missing))
+        print(fs.format(channel._radio.failcount, dupe, missing, strfail))
         await asyncio.sleep(60)
+        gc.collect()
+        micropython.mem_info()
 
 async def test_channel(config, test, master):
     chan = rp.Channel(config, master, rxcb = cb_rx, statecb = cb_state)

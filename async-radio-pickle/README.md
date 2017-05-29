@@ -19,13 +19,23 @@ version. Then use upip to install it as per the instructions
 [here](https://github.com/micropython/micropython-lib). Then recursively copy
 the contents of ``~/.micropython/lib`` to the target hardware.
 
+# Test Programs
+
+These assume a pair of Pyboards with nrf24l01+ radios. The config file
+``myconfig.py`` should be edited to reflect your SPI bus number and pins used
+for the radio's csn and ce pins.
+
+ * ``simple_test.py`` Basic test.
+ * ``as_rp_test.py`` Shows statistics on duplicated and missing messages along
+ with RAM usage.
+
 # The Channel class
 
 This is the means of accessing the radio link. The link is half-duplex,
-consequently there is an inherent asymmetry in that only one end (the master)
-can transmit spontaneously. The slave only transmits in response to receiving
-from the master. The ``Channel`` class hides this asymmetry and provides a
-similar interface to each end of the link enabling both ends to send
+consequently there is an inherent asymmetry inasmuch as only one end (termed
+the master) can transmit spontaneously. The slave only transmits in response to
+receiving from the master. The ``Channel`` class hides this asymmetry and
+provides a similar interface to each end of the link enabling both ends to send
 unsolicited messages.
 
 It should be noted that this flexibility and ease of use comes at a price in
@@ -67,11 +77,6 @@ These are synchronous and return immediately.
 
  * ``link`` A boolean providing the current 'link up' status.
 
-## Class variable
-
- * ``latency`` Transmission latency in ms. Default 1000. This is discussed
- below.
-
 ## Usage
 
 A ``Channel`` instance has a transmitter queue: the ``send`` method stores an
@@ -89,31 +94,38 @@ prepares the receiver for the next object.
 
 ## Mode of operation 
 
-A ``Channel`` instance behaves as follows. If it has data to send it attempts
-to send it immediately. How soon it is actually transmitted depends on whether
-the channel was instantiated with ``master`` set. If so, it is transmitted
-immediately. Otherwise it will wait until the master next transmits.
+A ``Channel`` instance behaves as follows. If it has data to send there may be
+some latency before transmission occurs. This latency depends on the link
+status and on whether the channel was instantiated with ``master`` set.
 
-In the event that the master has no data to send it ensures that it can receive
-data from the slave in a reasonably timely fashion by sending ``None`` once the
-latency timer has expired. Setting the latency timer to short values may not
-achieve expected results: in the event of communications problems
-retransmissions take place. There is an underlying timeout of 200ms where the
-link is defined as having failed. So there are practical lower limits to the
-latency, though low values should not cause failure of the driver.
+If ``master`` was ``False`` transmission will not occur until a block is
+received from the master.
 
-If the application requires minimum transmission latency in one direction, the
-``Channel`` doing the transmission should be instantiated as master.
+If the channel is OK (i.e. the last exchange was successful) the master will
+pause for 100ms before sending a block. It will do this even if it has no data
+to send, to ensure that the slave can send data if it has an item in its queue.
+So, with reliable radio communications, latency is on the order of 100ms.
+
+If the last exchange failed the master will wait for a period to allow the
+slave to time out and will attempt to repeat the failed transfer. This can
+result in arbitrarily long periods of latency depending on the link conditions:
+if the units have moved out of radio range the delay will persist until this is
+corrected.
+
+This will not cause the application code to block: the consequence is that the
+receive callback will be delayed and the transmit queue may become full. The
+application design should accommodate this possibility.
 
 # RadioSetup class
 
 This is intended to facilitate sharing a configuration between devices to
 reduce the risk of misconfiguration. A RadioSetup object may be instantiated
-and configured in a module common to both ``Channel`` instances.
+and configured in a module common to both ``Channel`` instances e.g. 
+``myconfig.py``.
 
 ## Class variable
 
-``channel`` Defines the radios' carrier frequency. This must be identical for
+``channel`` Defines the radio's carrier frequency. This must be identical for
 both ``Channel`` instances. See notes below.
 
 ## Constructor
@@ -145,7 +157,7 @@ transmission to have failed and re-transmits the object. Occasionally the
 receiver sends BYE but the sender fails receive it. In this instance the sender
 retransmits and the receiver gets a duplicate message. If this is an issue it
 should be handled at the application level. One way is to send an incrementing
-modulo N message ID as part of the object. The receiver can discard objects
+modulo N message ID as part of the object, with the receiver discarding objects
 already received.
 
 The protocol is described in detail [here](../PROTOCOL.md)
@@ -158,12 +170,11 @@ suchlike) are supported. There are constraints regarding custom classes - see
 the Python documentation. MicroPython has restrictions on subclassing built in
 types.
 
-Currently there is a MicroPython issue #2280 where a memory leak occurs if you
-pass a string which varies regularly. Pickle saves a copy of the string (if it
-hasn't already occurred) each time until RAM is exhausted. The workround is to
-use any data type other than strings or bytes objects. As I understand it a
-string can be sent without a leak if it is an element of an object such as a
-list, tuple, set or dict. But I may be wrong on this...
+Currently there is a MicroPython issue #2280 where a memory leak occurs if an
+object tontains a string which varies regularly. The MicroPython interpreter
+(which is invoked by Pickle) interns a copy of the string (if it hasn't already
+occurred) each time until RAM is exhausted. The workround is to use data types
+other than strings or bytes objects.
 
 # Channels
 
