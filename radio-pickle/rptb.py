@@ -1,15 +1,15 @@
 # test using testbox with LCD for range testing
 # On testbox run test()
-# on V1 PCB run ts()
+# on V2 PCB run ts()
 import pyb
 import radio_pickle as rp
-from usched import Sched, wait, Roundrobin
-from lcdthread import LCD, PINLIST                          # Library supporting Hitachi LCD module
-from myconfig import config_master, config_slave              # Configs for my hardware
-# usched and lcdthread at https://github.com/peterhinch/Micropython-scheduler.git
+import uasyncio as asyncio
+from alcd import LCD, PINLIST  # Library supporting Hitachi LCD module
+from myconfig import config_master, config_slave  # Configs for my hardware
+# alcd at https://github.com/peterhinch/micropython-async.git
 
-def master(lcd):
-    yield Roundrobin()
+async def master(lcd):
+    await asyncio.sleep(0)
     m = rp.Master(config_master)
     obj = [0, '']
     x = ord('a')
@@ -25,15 +25,15 @@ def master(lcd):
             lcd[0] = str(result)
         finally:
             lcd[1] = 't = {}mS'.format(t)
-        yield from wait(1.0)
+        await asyncio.sleep(1)
         obj[0] += 1
 
 # Run this on testbox, run ts() on slave
 def test():
-    objSched = Sched()
-    lcd0 = LCD(PINLIST, objSched, cols = 24)
-    objSched.add_thread(master(lcd = lcd0))
-    objSched.run()
+    loop = asyncio.get_event_loop()
+    lcd0 = LCD(PINLIST, cols = 24)
+    loop.create_task(master(lcd = lcd0))
+    loop.run_forever()
 
 # test_master() and test_slave() run at REPL (master on testbox) to check a variety of
 # message lengths including different lengths in each direction

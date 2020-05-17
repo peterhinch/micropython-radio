@@ -50,11 +50,11 @@ async def test_channel(config, master):
 # Run this on one end of the link
 def tm(test=0):
     loop = asyncio.get_event_loop()
-    loop.create_task(test_channel(config_v1, True))
+    loop.create_task(test_channel(config_testbox, True))  # EDIT THIS (config)
     loop.run_forever()
 
 # And this on the other
 def ts(test=0):
     loop = asyncio.get_event_loop()
-    loop.create_task(test_channel(config_v2, False))
+    loop.create_task(test_channel(config_v2, False))  # EDIT THIS (config)
     loop.run_forever()
