@@ -1,6 +1,10 @@
 The radio_fast module
 ---------------------
 
+The test scripts which use `uasyncio` have been updated for `uasyncio` V3 and
+require this version. To ensure this, use a daily build of firmware or a
+release build after V1.2.
+
 This module uses the nRF24l01+ chip and MicroPython driver to create a wireless link between two points.
 Wherease the radio_pickle module is designed for ease of use and support of dynamically variable data,
 radio_fast is optimised for speed and range. The cost is a restriction to a fixed record length determined

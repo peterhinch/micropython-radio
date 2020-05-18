@@ -19,18 +19,6 @@ On slave issue rftest.test(False)
 
 print(st)
 
-#async def tm():
-    #m = rf.Master(testbox_config)
-    #send_msg = FromMaster()
-    #while True:
-        #result = m.exchange(send_msg)
-        #if result is not None:
-            #print(result.i0)
-        #else:
-            #print('Timeout')
-        #send_msg.i0 += 1
-        #asyncio.sleep(1)
-
 async def slave():
     # power control done in main.py
     s = rf.Slave(v2_config)  # Slave runs on V2 PCB (with SD card)

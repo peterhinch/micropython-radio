@@ -36,15 +36,17 @@ async def slave(lcd):
     s = rf.Slave(testbox_config)  # Slave on testbox
     send_msg = ToMaster()
     while True:
-        while True:
-            start = ticks_ms()
-            result = s.exchange(send_msg, block = False)
-            t = ticks_diff(ticks_ms(), start)
+        start = ticks_ms()
+        result = None
+        while not s.any():  # Wait for master to send
             await asyncio.sleep(0)
-            if result is None:  # Timeout  *** master gets every message but slave (testbox) sees many timeouts. ***
-                break  # If replaced with pass still lost messages
-            if result:  # Success
+            t = ticks_diff(ticks_ms(), start)
+            if t > 4000:
                 break
+        else:  # Master has sent
+            start = ticks_ms()
+            result = s.exchange(send_msg)
+            t = ticks_diff(ticks_ms(), start)
         if result is None:
             lcd[0] = 'Timeout'
         elif result:

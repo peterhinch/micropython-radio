@@ -1,5 +1,9 @@
 # async_radio_pickle
 
+The test scripts have now been updated for `uasyncio` V3 and require this
+version. To ensure this, use a daily build of firmware or a release build after
+V1.2.
+
 This provides a means of creating a point-to-point radio link capable of
 exchanging arbitrary Python objects. It uses ``uasyncio`` for nonblocking
 behaviour. Communication is by ``Channel`` instances which provide a

@@ -46,15 +46,26 @@ async def test_channel(config, master):
         await asyncio.sleep_ms(t)
         if chan.send(arbitrary_object):
             arbitrary_object = next(md)
+st = '''
+On testbox run simple_test.tm()
+On V2 board (with SD slot) run simple_test.ts()
+'''
+print(st)  # Notes for my hardware
 
 # Run this on one end of the link
 def tm(test=0):
-    loop = asyncio.get_event_loop()
-    loop.create_task(test_channel(config_testbox, True))  # EDIT THIS (config)
-    loop.run_forever()
+    try:
+        asyncio.run(test_channel(config_testbox, True))  # EDIT THIS (config)
+    except KeyboardInterrupt:
+        print('Interrupted')
+    finally:
+        asyncio.new_event_loop()
 
 # And this on the other
 def ts(test=0):
-    loop = asyncio.get_event_loop()
-    loop.create_task(test_channel(config_v2, False))  # EDIT THIS (config)
-    loop.run_forever()
+    try:
+        asyncio.run(test_channel(config_v2, False))  # EDIT THIS (config)
+    except KeyboardInterrupt:
+        print('Interrupted')
+    finally:
+        asyncio.new_event_loop()
