@@ -1,39 +1,59 @@
 # micropython-radio
 
-Three protocols for the nRF24L01+ radio module. All are based on a link between
-two radios, where one acts as master (initiating communications) and the other
-acts as slave (responding to transmissions). The async-radio-pickle hides this
-underlying master/slave asymmetry.
+Two protocols for the nRF24L01+ radio module. Each implements a bidirectional
+link between two radios.
 
-radio-fast
-----------
+## radio-fast
 
-A protocol for short fixed-length records which trades the simplicity of use of
-radio-pickle in exchange for higher speeds and (slightly) greater range.  
+A driver for short fixed-length records. This is a thin layer over the official
+driver which makes it easier to ensure mutually compatible configurations of
+the radios.
+
+The nRF24L01 guarantees data integrity but successful reception is not
+guaranteed as radio outages can occur (see below).
+
+In this protocol one radio acts as master (initiating communications) and the
+other acts as slave (responding to transmissions)
+
 See [README](./radio-fast/README.md)
 
-radio-pickle
-------------
+## as_nrf_stream.py
 
-This offers a simple way to use the nRF24L01+ radio to exchange arbitrary
-Python objects between two Pyboards. This is the easy way to do it!  
-See [README](./radio-pickle/README.md)
+See [README](./async/README.md)
 
-async-radio-pickle
-------------------
+Radio links are inherently unreliable, not least since receiver and transmitter
+may move out of range. The link may also be disrupted by radio frequency
+interference. This driver mitigates this by ensuring that, in the event of a
+link outage, data transfer will resume without loss when connectivity is
+restored.
 
-A version of radio-pickle which uses uasyncio to achieve non-blocking
-behaviour. The unit of communication is an arbitrary Python object. It provides
-a symmetrical Channel object enabling either end of the link to send
-unsolicited messages. This enables the same code to run on both ends of the
-link with the exception of a single boolean initialisation flag which must
-differ at each end.
+The use of `uasyncio V3` stream I/O means that the interface matches that of
+objects such as sockets and UARTs. Objects exchanged are `bytes` instances,
+typically terminated by a newline character (`b'\n'`). Lengths of the `bytes`
+objects are arbitrary and are allowed to vary at runtime. Consequently it is
+easy to exchange Python objects via serialisation libraries such as `pickle`
+and `ujson`.
 
-One aim of this was to achieve "reliable" communication in the sense that
-messages would never be lost. If a unit moved out of range the message would
-inevitably be delayed until it moved back into range - but it would eventually
-get through. Alas this has not yet been achieved: under circumstances of poor
-communication messages are occasionally lost.
+The underlying protocol's API hides the following details:
+ 1. The radio hardware is half-duplex (it cannot simultaneously transmit and
+ receive).
+ 2. The chip has a 32 byte limit on message length.
+ 3. To address point 1 the protocol is asymmetrical with a master/slave design.
 
-See [README](./async-radio-pickle/README.md)
+The driver provides a symmetrical full-duplex interface in which either node
+can initiate a transmission at any time. The cost relative to the `radio-fast`
+module is some loss in maximum throughput and an increase in latency. Gains
+are:
+ * The ability to exchange relatively large, dynamic objects.
+ * Data integrity with each message being correctly received exactly once.
+ * A standard bidirectional (full duplex) stream interface.
+ * Asynchronous code: in the event of an outage communication will inevitably
+ stall for the duration, but other coroutines will continue to run.
 
+## Obsolete modules
+
+The `as_nrf_stream` driver replaces the old `radio-pickle` and
+`async-radio-pickle` modules which pre-dated the `uasyncio` I/O interface. This
+module is simpler, smaller and more efficient. Lastly the old asynchronous
+driver allowed duplicate messages to be received. The new protocol ensures that
+each record is received exactly once.
