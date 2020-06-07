@@ -10,6 +10,8 @@ from time import ticks_ms, ticks_diff
 from micropython import const
 from nrf24l01 import NRF24L01
 
+__version__ = (0, 1, 0)
+
 # I/O interface
 MP_STREAM_POLL_RD = const(1)
 MP_STREAM_POLL_WR = const(4)
@@ -113,7 +115,7 @@ class AS_NRF24L01(io.IOBase):
         self._txpkt = TxPacket()
         self._rxpkt = RxPacket()
         self._tlast = ticks_ms()  # Time of last communication
-        self._txbusy = False
+        self._txbusy = False  # Don't call ._radio.any() while sending.
 
     # **** uasyncio stream interface ****
     def ioctl(self, req, arg):
@@ -250,5 +252,4 @@ class Slave(AS_NRF24L01):
         if (rxcmd == ACK) or not self._txpkt:
             self._txq = self._txpkt.update(self._txq)  # Replace txq
         asyncio.create_task(self._send(self._txpkt(MSG)))
-        # Issues start_listening when done. The ._txbusy interlock ensures
-        # that ._process_packet is not called again until tx is complete.
+        # Issues start_listening when done.

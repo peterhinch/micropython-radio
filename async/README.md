@@ -263,7 +263,7 @@ these devices.
 These monitor the internal behaviour of the driver and may be used as a crude
 measure of link quality. If enabled in the config the device's `stats` method
 returns a list of four integers. These are counters initialised to zero and
-incrementing when a given event occurs. Their meaning (by offset) is:
+incrementing when a given event occurs. Their meaning (by offset) is:  
  0. Receive timeouts. Relevant only to `Master`: increments when the slave does
  not respond in 1.5* `tx_ms` [section 5.1](./README.md#51-radio-setup). These
  will repeatedly occur during an outage.
