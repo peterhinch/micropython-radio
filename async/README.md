@@ -425,4 +425,35 @@ until it receives an `ACK`.
 The protocol provides limited handling of power outages. If one node has an
 outage while the other does not, the running node may receive an incomplete
 `message`. The protocol detects this and discards the incomplete data. This
-ensures that `message` instances should always have the expected structure.
+ensures that `message` instances should always have the expected structure,
+but does imply message loss.
+
+# 12. Notes for protocol designers
+
+The nRF24l01 and its driver have the following "gotchas" calling for workrounds.
+ 1. The response from `.send_done` cannot be relied upon. A result code of 2
+ indicates transmission failure. On occasion 2 is returned when successful
+ reception has occurred.
+ 2. The `.send_done` response if the peer is down is to return `None` until
+ connectivity resumes. This is reasonable but a protocol may need a timeout here.
+ 3. If a message is sent and you then wait for a response there is a risk that
+ the reponder sends a reply before the sender's radio is receiving. This can be
+ averted by ensuring that a minimum delay occurs between receiving a packet and
+ transmitting a response.
+ 4. Under very rare conditions at the limit of range a corrupt packet may be
+ received. I suspect this lay behind my failure to achieve 100% reliability
+ with the old protocols. Here is the smoking gun.
+
+Data sent:
+```
+b'[13398, 2, [62541, 0, 45113, 38714], "abcdefgh"]\n'
+```
+Data received:
+```
+JSON error b'\xdb13398, 2, [62541< 0, 45113, 38714], "abcdefgh"]\n'
+```
+Note `ord('[') == 0x5b`, `ord(',') == 0x2c`, and `ord('<') == 0x3c`. In each
+case a 0 is received as a 1.
+
+This occurred with the official driver on default settings apart from RF
+channel.
