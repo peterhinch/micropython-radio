@@ -23,7 +23,7 @@ sockets and UARTs. The objects exchanged are `bytes` instances.
 Where an application uses a serialisation library like `pickle` or `ujson`, the
 resultant `bytes` objects will be of variable length. This raises the issue of
 how the recipient determines the end of a message. The simplest approach is for
-the application to terminate the `bytes` with  a newline character (`b'\n'`).
+the application to terminate the `bytes` with a newline character `b'\n'`.
 This allows the recipient to use the `StreamReader.readline` method.
 
 In this doc an application-level `bytes` object is termed a `message` as
@@ -181,7 +181,7 @@ module:
  * `ce` Pin instance linked to CE.  
  * `stats=False` If `True` the driver gathers statistics including a count of
  transmit and receive timeouts. These can be used to glean a rough measure of
- link quality. See `as_nrf_test.py` for an example of displaying these. If
+ link quality. See `as_nrf_json.py` for an example of displaying these. If
  `False` a (tiny) amount of RAM is saved. See
  [section 8](./README.md#8-statistics).
 
@@ -215,7 +215,7 @@ transmission. If transmission of the previous call to `drain` has completed,
 return will be "immediate"; otherwise the coroutine will pause until
 transmission is complete and reception has been acknowledged. In the event of
 an outage, the pause duration will be that of the outage.
-```python`
+```python
 async def sender(device):
     swriter = asyncio.StreamWriter(device, {})
     while True:
