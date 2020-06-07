@@ -13,11 +13,12 @@ try:
     from pyb import LED
 except ImportError:  # Non-pyboard platform: dummy LED
     class LED:
-        def __init__(self, _):
-            self.on = lambda : None
-            self.off = lambda : None
+        on = lambda _ : None
+        off = lambda _ : None
+        toggle = lambda _ : None
 
 led = LED(1)  # Red lit during an outage.
+green = LED(2)  # Message received
 missed = 0  # Non-sequential records
 outages = 0
 tstart = 0
@@ -58,26 +59,26 @@ async def receiver(device):
     while True:
         res = await sreader.readline()  # Can return b''
         if res:
-            # If res was corrupt ujson.loads would throw ValueError. In practise
+            green.toggle()
             try:
-                dat = ujson.loads(res)  # the protocol prevents this.
-            except ValueError:
+                dat = ujson.loads(res)
+            except ValueError:  # Extremely rare case of data corruption. See docs.
                 print('JSON error', res)
-                raise
-            print('Received record no: {:5d} text: {:s}'.format(dat[0], dat[3]))
-            if last is not None and (last + 1) != dat[0]:
-                missed += 1
-            last = dat[0]
-            x += 1
-            x %= 20
-            if not x:
-                print(msg.format(missed, dat[1]))
-                print(tmsg.format((time.time() - tstart)/3600, outages))
-                if isinstance(dat[2], list):
-                    print(smsg.format('Remote', *dat[2]))
-                local_stats = device.stats()
-                if isinstance(local_stats, list):
-                    print(smsg.format('Local', *local_stats))
+            else:
+                print('Received record no: {:5d} text: {:s}'.format(dat[0], dat[3]))
+                if last is not None and (last + 1) != dat[0]:
+                    missed += 1
+                last = dat[0]
+                x += 1
+                x %= 20
+                if not x:
+                    print(msg.format(missed, dat[1]))
+                    print(tmsg.format((time.time() - tstart)/3600, outages))
+                    if isinstance(dat[2], list):
+                        print(smsg.format('Remote', *dat[2]))
+                    local_stats = device.stats()
+                    if isinstance(local_stats, list):
+                        print(smsg.format('Local', *local_stats))
 
 async def fail_detect(device):
     global outages

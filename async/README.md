@@ -1,9 +1,13 @@
 # 1. nRF24l01 Stream driver
 
 This enables a pair of nRF24l01 radios to provide a link that implements the
-MicroPython `uasyncio` I/O interface. Users may choose a serialisation library
-or skip serialisation and simply exchange arbitrary `bytes` instances. A test
-script illustrates the use of `ujson` for Python object interchange.
+MicroPython `uasyncio` I/O interface. The object is to enable a pair of radios
+to have the same asynchronous interface as a pair of UARTs or sockets.
+
+Users may choose a serialisation library to exchange Python objects.
+Alternatively an application may simply exchange fixed or variable length
+`bytes` instances. Demo scripts illustrate both approaches including the use of
+`ujson` for Python object interchange.
 
 ## 1.1. Overview
 
@@ -14,37 +18,52 @@ link outage, data transfer will resume without loss when connectivity is
 restored.
 
 The use of stream I/O means that the interface matches that of objects such as
-sockets and UARTs. The objects exchanged are `bytes` instances. These are
-typically terminated by a newline character (`b'\n'`). Lengths of the `bytes`
-objects are arbitrary and can vary at runtime. Consequently it is easy to
-exchange Python objects via serialisation libraries such as `pickle` and
-`ujson`.
+sockets and UARTs. The objects exchanged are `bytes` instances.
+
+Where an application uses a serialisation library like `pickle` or `ujson`, the
+resultant `bytes` objects will be of variable length. This raises the issue of
+how the recipient determines the end of a message. The simplest approach is for
+the application to terminate the `bytes` with  a newline character (`b'\n'`).
+This allows the recipient to use the `StreamReader.readline` method.
+
+In this doc an application-level `bytes` object is termed a `message` as
+distinct from a `packet` which is the fixed length `bytes` object exchanged by
+the radios.
 
 The underlying protocol's API hides the following details:
  * The fact that the radio hardware is half-duplex.
  * The hardware limit on message length.
  * The asymmetrical master/slave design of the underlying protocol.
 
-It provides a symmetrical full-duplex interface: either node can initiate a
-transmission at any time. The cost is some loss in throughput and increase in
+It provides a symmetrical full-duplex interface: either node can send a
+`message` at any time. The cost is some loss in throughput and increase in
 latency relative to the `radio-fast` module.
 
-# 2. Files
-
- 1. `as_nrf_stream.py` The library.
- 2. `asconfig.py` User-definable hardware configuration for the radios.
- 3. `as_nrf_simple.py` Minimal test script and application template.
- 4. `as_nrf_test.py` Test script. This gathers and transmits statistics showing
- link characteristics.
-
-# 3. Dependencies
+# 2. Dependencies
 
 The library requires the
 [official nRF24l01 driver](https://github.com/micropython/micropython/blob/master/drivers/nrf24l01/nrf24l01.py)
-and `uasyncio` version 3. The latter is built in to daily builds of firmware
-and will be available in official releases beginning with V1.13.
+which should be copied to both targets' filesystems. It requires `uasyncio`
+version 3. This is built in to daily builds of firmware and will be available
+in official releases beginning with V1.13.
 
-# 4. Usage example
+# 3. Files and installation
+
+ 1. `as_nrf_stream.py` The library.
+ 2. `asconfig.py` User-definable hardware configuration for the radios.
+ 3. `as_nrf_simple.py` Minimal demo of exchanging `bytes` objects.
+ 4. `as_nrf_json.py` Demo of exchanging Python objects and detecting outages.
+ 5. `as_nrf_test.py` Test script. This transmits and reports statistics showing
+ link characteristics.
+
+To install, adapt `asconfig.py` to match your hardware. Copy it and
+`as_nrf_stream` to both targets. Ensure dependencies are satisfied. Copy any of
+the above test scripts to both targets. Test scripts print running instructions
+on import.
+
+# 4. Usage examples
+
+## 4.1 Exchanging bytes objects
 
 Taken from `as_nrf_simple.py`. This is run by issuing
 ```python
@@ -84,6 +103,49 @@ def test(master):
 ```
 Note that the radios could be replaced by a UART by changing initialisation
 only. The `sender` and `receiver` coroutines would be identical.
+
+## 4.2 Exchanging Python objects
+
+In this example a list is passed. Any object supported by ujson may be used.
+```python
+import uasyncio as asyncio
+import ujson
+from as_nrf_stream import Master, Slave
+from asconfig import config_master, config_slave  # Hardware configuration
+
+async def sender(device):
+    ds = [0, 0]  # Data object for transmission
+    swriter = asyncio.StreamWriter(device, {})
+    while True:
+        s = ''.join((ujson.dumps(ds), '\n'))
+        swriter.write(s.encode())  # convert to bytes
+        await swriter.drain()
+        await asyncio.sleep(1)
+        ds[0] += 1  # Record number
+
+async def receiver(device):
+    sreader = asyncio.StreamReader(device)
+    while True:
+        res = await sreader.readline()  # Can return b''
+        if res:
+            try:
+                dat = ujson.loads(res)
+            except ValueError:  # Extremely rare. See section 10.1
+                pass
+            else:
+                print(dat)
+
+async def main(master):
+    device = Master(config_master) if master else Slave(config_slave)
+    asyncio.create_task(receiver(device))
+    await sender(device)
+
+def test(master):
+    try:
+        asyncio.run(main(master))
+    finally:  # Reset uasyncio case of KeyboardInterrupt
+        asyncio.new_event_loop()
+```
 
 # 5. Configuration: asconfig.py
 
@@ -151,14 +213,14 @@ writes `bytes` objects to it as required. If the reader is to use `.readline`
 these should be newline terminated. The `drain` method queues the bytes for
 transmission. If transmission of the previous call to `drain` has completed,
 return will be "immediate"; otherwise the coroutine will pause until
-transmission is complete. In the event of an outage, the pause duration will be
-that of the outage.
+transmission is complete and reception has been acknowledged. In the event of
+an outage, the pause duration will be that of the outage.
 ```python`
 async def sender(device):
     swriter = asyncio.StreamWriter(device, {})
     while True:
         swriter.write(b'Hello receiver\n')  # Must be bytes. Newline terminated
-        await swriter.drain()
+        await swriter.drain()  # May pause until received.
         await asyncio.sleep(1)
 ```
 
@@ -175,9 +237,9 @@ async def receiver(device):
             print('Received:', res)
 ```
 In order to keep data interchange running fast and efficiently, applications
-should run a coroutine which spends most of its time in `.readline`. Where time
-consuming operations are required to process incoming data these should be
-delegated to other concurrent tasks.
+should run a coroutine which spends most of its time in `.readline`. Where slow
+operations are needed to process incoming data, these should be delegated to
+other concurrent tasks.
 
 The `.readline` method has two possible return values: a single complete line
 or an empty `bytes` instance. Applications should check for and ignore the
@@ -221,9 +283,9 @@ duplicate packets are received - along lines of
 `(stats[2] - stats[3)/seconds`.
 
 Receive timeouts occur on `Master` only if `Master` detects no response from
-`Slave` in a period of just over 1.5*`tx_ms`. This may be because the slave did
-not receive the packet from `Master`, or because `Master` did not receive the
-response from `Slave`.
+`Slave` in a period of just over 1.5*`tx_ms`. These may occur because the slave
+did not receive the packet from `Master`, or because `Master` did not receive
+the response from `Slave`.
 
 Duplicate packets occur when one node fails to receive a transmission from the
 other. In this event it keeps trying to send the same packet until a response
@@ -233,7 +295,8 @@ is detected (the driver detects and discards dupes).
 
 The underlying communications channel is unreliable inasmuch as transmitted
 packets may not be received. However, if a packet is received, the radio
-hardware guarantees that its contents are correct.
+hardware aims to guarantee that its contents are correct. In practice this
+"guarantee" is not perfect: see [section 10](./README.md#101-message-integrity).
 
 The protocol has two aspects: management of send/receive and management of
 packets. There is no point in a node transmitting if its peer is not listening.
@@ -299,9 +362,15 @@ the same packet until `ACK` is received.
 ## 10.1 Message integrity
 
 The script `as_nrf_test.py` transmits messages with incrementing ID's.
-Reception checks for non-consecutive received ID's. In many hours of testing,
-some in locations of poor connectivity with multiple outages, no instances of
-this were recorded by either end of the link.
+Reception checks for non-consecutive received ID's. Under normal conditions the
+radio hardware ensures that received packets are correct, and the protocol
+ensures that no packets are lost.
+
+Testing was also done at the very limit of wireless range, outages occurring
+about once per minute over 10 hours. After 612 outages one instance of data
+corruption occurred. A packet had two bytes with single bit errors. It should
+be noted that this was an extreme test. With better (but still imperfect)
+connectivity no errors were observed in long periods of testing.
 
 ## 10.2 Latency and throughput
 
@@ -326,8 +395,34 @@ issues
 ```
 the `ioctl` method causes the coroutine to pause until data is available. In
 the case of `Slave` data availability causes the `_process_packet` to update
-the receive queue, trigger transmission of an acknowledgement, and terminate.
+the receive queue, trigger transmission of a response packet, and terminate.
 
-In the case of `Master` a similar mechanism is used for incoming packets. It
-also has a continuously running task `._run` to run the protocol in order
-periodically to poll `Slave` in case `Slave` has something to transmit.
+In the case of `Master` a similar mechanism is used for incoming packets but
+in this case an `Event` is triggered which is picked up by the continuously
+running task `._run`.
+
+The protocol works as follows. `Master` sends a packet, then waits on the
+`Event`. This wait is subject to a timeout. If the `Event` is set, `Master` can
+be sure that `Slave` received the packet: it updates the data to be transmitted
+to the next packet (if any). If the timeout occurred, either `Slave` failed to
+receive the packet or its response was lost. In either case, `Master`
+retransmits the packet.
+
+Retransmission implies that sometimes duplicate packets will be received. The
+`Packet` class enables the recipient to detect and discard dupes by virtue of a
+single bit packet ID.
+
+`Slave` always responds to packet reception by immediately sending a single
+response packet. Consequently any packet received by `Master` is an
+acknowledgement of reception of `Master`'s last transmission.
+
+This does not apply in the other direction. A response packet from `Slave`
+containing data may be lost. In this case the next packet from `Master` would
+result from the timeout. Consequently `Master` sends a specific `ACK` command
+to acknowledge successful reception of a packet. `Slave` retransmits a packet
+until it receives an `ACK`.
+
+The protocol provides limited handling of power outages. If one node has an
+outage while the other does not, the running node may receive an incomplete
+`message`. The protocol detects this and discards the incomplete data. This
+ensures that `message` instances should always have the expected structure.

@@ -16,11 +16,12 @@ MP_STREAM_POLL_WR = const(4)
 MP_STREAM_POLL = const(3)
 MP_STREAM_ERROR = const(-1)
 
-# Command bits
+# Command bits. Notionally LS 4 bits are command, upper 4 status
 MSG = const(0)  # Normal packet. May carry data.
 ACK = const(1)  # Acknowledge. May carry data.
-PID = const(0x80)  # MSB of command is a 1-bit PID.
-PIDMASK = const(0x7f)
+PWR = const(0x40)  # Node has powered up: peer clears rxq.
+PID = const(0x80)  # 1-bit PID.
+CMDMASK = const(0x0f)  # LS bits is cmd
 
 # Timing
 SEND_DELAY = const(10)  # Transmit delay (give remote time to turn round)
@@ -42,20 +43,27 @@ class TxPacket(Packet):
         self._buf = bytearray(32)
         self._pid = 0
         self._len = 0
+        self._ploads = 0  # No. of payloads sent
 
-    # Update command byte prior to transmit
+    # Update command byte prior to transmit. Send PWR bit until 2nd update: by
+    # then we must have had an ACK from 1st payload.
     def __call__(self, txcmd):
         self._buf[0] = txcmd | self._pid if self else txcmd
+        # 1st packet has PWR bit set so RX clears down rxq. 
+        if self._ploads < 2:  # Stop with 2nd payload.
+            self._buf[0] |= PWR
         return self._buf
 
     # Update the buffer with data from the tx queue. Return the new reduced
-    # queue instance
+    # queue instance.
     def update(self, txq):
         txd = txq[:30]  # Get current data for tx up to interface maximum
         self._len = len(txd)
         if self:  # Has payload
             self._pid ^= PID
         ustruct.pack_into(self._fmt, self._buf, 0, 0, self._len, txd)
+        if self._ploads < 2:
+            self._ploads += 1  # Payloads sent.
         return txq[30:]
 
     def __bool__(self):  # True if packet has payload
@@ -68,8 +76,9 @@ class RxPacket(Packet):
 
     def __call__(self, data):  # Split a raw 32 byte packet into fields
         rxcmd, nbytes, d = ustruct.unpack(self._fmt, data)
-        cmd = rxcmd & PIDMASK  # Split rxcmd byte
+        cmd = rxcmd & CMDMASK  # Split rxcmd byte
         rxpid = rxcmd & PID
+        pwr = bool(rxcmd & PWR)  # Peer has power cycled.
         dupe = False  # Assume success
         if nbytes:  # Dupe detection only relevant to a data payload
             if (self._pid is None) or (rxpid != self._pid):
@@ -77,7 +86,7 @@ class RxPacket(Packet):
                 self._pid = rxpid  # Save PID to check next packet
             else:
                 dupe = True
-        return d[:nbytes], cmd, dupe
+        return d[:nbytes], cmd, dupe, pwr
 
 # Base class for Master and Slave
 class AS_NRF24L01(io.IOBase):
@@ -209,7 +218,9 @@ class Master(AS_NRF24L01):
     # A packet is ready. Any response implies an ACK: slave never transmits
     # unsolicited messages
     def _process_packet(self):
-        rxdata, _, dupe = self._rxpkt(self._radio.recv())
+        rxdata, _, dupe, pwrup = self._rxpkt(self._radio.recv())
+        if pwrup:  # Slave has had a power outage
+            self._rxq = b''
         self._tlast = ticks_ms()  # User outage detection
         self._pkt_rec.set()
         if rxdata:  # Packet has data. ACK even if a dupe.
@@ -226,7 +237,9 @@ class Slave(AS_NRF24L01):
         self._is_running = True  # Start gathering stats immediately
 
     def _process_packet(self):
-        rxdata, rxcmd, dupe = self._rxpkt(self._radio.recv())
+        rxdata, rxcmd, dupe, pwrup = self._rxpkt(self._radio.recv())
+        if pwrup:  # Master has had a power outage
+            self._rxq = b''
         self._tlast = ticks_ms()
         if rxdata:
             self._do_stats(S_RX_ALL)  # Optionally count instances
