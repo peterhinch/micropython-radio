@@ -42,10 +42,9 @@ latency relative to the `radio-fast` module.
 # 2. Dependencies
 
 The library requires the
-[official nRF24l01 driver](https://github.com/micropython/micropython/blob/master/drivers/nrf24l01/nrf24l01.py)
+[official nRF24l01 driver](https://github.com/micropython/micropython-lib/blob/master/micropython/drivers/radio/nrf24l01/nrf24l01.py)
 which should be copied to both targets' filesystems. It requires `uasyncio`
-version 3. This is built in to daily builds of firmware and will be available
-in official releases beginning with V1.13.
+version 3 which is built in to the firmware.
 
 # 3. Files and installation
 

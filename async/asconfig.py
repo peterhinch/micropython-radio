@@ -16,4 +16,5 @@ config_testbox = RadioSetup(SPI(1), Pin('X5'), Pin('Y11'), True)  # My testbox
 config_v1 = RadioSetup(SPI(1), Pin('X5'), Pin('X4'), True)  # V1 Micropower PCB
 config_v2 = RadioSetup(SPI(1), Pin('X5'), Pin('X2'), True)  # V2 Micropower PCB with SD card
 config_master = config_v1
-config_slave = config_v2
+#config_slave = config_v2
+config_slave = config_testbox

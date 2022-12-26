@@ -51,7 +51,7 @@ Dependencies
 ------------
 
 The library requires the nrf24l01.py driver from the source tree.
-[nrf24l01.py](https://github.com/micropython/micropython/tree/master/drivers/nrf24l01)
+[nrf24l01.py](https://github.com/micropython/micropython-lib/blob/master/micropython/drivers/radio/nrf24l01/nrf24l01.py)
 
 Example code
 ------------
